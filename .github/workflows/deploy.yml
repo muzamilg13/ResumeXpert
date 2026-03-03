@@ -9,8 +9,20 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
 
+    env:
+      AWS_REGION: ${{ secrets.AWS_REGION }}
+      AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+      BACKEND_REPO: ${{ secrets.ECR_BACKEND_REPO }}
+      FRONTEND_REPO: ${{ secrets.ECR_FRONTEND_REPO }}
+      CLUSTER_NAME: resumexpert-cluster
+      BACKEND_SERVICE: resumexpert-backend-service
+      FRONTEND_SERVICE: resumexpert-frontend-service
+      BACKEND_TASK: resumexpert-backend-task
+      FRONTEND_TASK: resumexpert-frontend-task
+      IMAGE_TAG: ${{ github.sha }}
+
     steps:
-      - name: Checkout
+      - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Configure AWS credentials
@@ -20,59 +32,70 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      - name: Login to ECR
+      - name: Login to Amazon ECR
         run: |
-          aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | \
+          aws ecr get-login-password --region $AWS_REGION | \
           docker login --username AWS --password-stdin \
-          ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
+          $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
 
-      - name: Set image tag
-        run: echo "IMAGE_TAG=${GITHUB_SHA}" >> $GITHUB_ENV
+      # ================= BACKEND =================
 
-      # ---------------- BACKEND ----------------
-      - name: Build and push backend
+      - name: Build and push backend image
         run: |
-          ECR_URI=${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_BACKEND_REPO }}
-          docker build -t $ECR_URI:$IMAGE_TAG ./backend
+          ECR_URI=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$BACKEND_REPO
+          docker build --no-cache -t $ECR_URI:$IMAGE_TAG ./backend
           docker push $ECR_URI:$IMAGE_TAG
 
-      - name: Update backend task definition
+      - name: Download backend task definition
         run: |
-          TASK_DEF=$(aws ecs describe-task-definition --task-definition resumexpert-backend-task --query taskDefinition)
-          echo $TASK_DEF > task-def.json
+          aws ecs describe-task-definition \
+            --task-definition $BACKEND_TASK \
+            --query taskDefinition \
+            > backend-task.json
 
-          jq --arg IMAGE "${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_BACKEND_REPO }}:$IMAGE_TAG" \
-          '.containerDefinitions[0].image=$IMAGE
-          | del(.taskDefinitionArn,.revision,.status,.requiresAttributes,.compatibilities,.registeredAt,.registeredBy)' \
-          task-def.json > new-task-def.json
+      - name: Render new backend task definition
+        id: render-backend
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: backend-task.json
+          container-name: resumexpert-backend
+          image: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_BACKEND_REPO }}:${{ github.sha }}
 
-          aws ecs register-task-definition --cli-input-json file://new-task-def.json
+      - name: Deploy backend
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+        with:
+          task-definition: ${{ steps.render-backend.outputs.task-definition }}
+          service: $BACKEND_SERVICE
+          cluster: $CLUSTER_NAME
+          wait-for-service-stability: true
 
-          aws ecs update-service \
-            --cluster resumexpert-cluster \
-            --service resumexpert-backend-service \
-            --force-new-deployment
+      # ================= FRONTEND =================
 
-      # ---------------- FRONTEND ----------------
-      - name: Build and push frontend
+      - name: Build and push frontend image
         run: |
-          ECR_URI=${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_FRONTEND_REPO }}
-          docker build --no-cache -t $ECR_FRONTEND:$IMAGE_TAG ./frontend
+          ECR_URI=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$FRONTEND_REPO
+          docker build --no-cache -t $ECR_URI:$IMAGE_TAG ./frontend
           docker push $ECR_URI:$IMAGE_TAG
 
-      - name: Update frontend task definition
+      - name: Download frontend task definition
         run: |
-          TASK_DEF=$(aws ecs describe-task-definition --task-definition resumexpert-frontend-task --query taskDefinition)
-          echo $TASK_DEF > task-def.json
+          aws ecs describe-task-definition \
+            --task-definition $FRONTEND_TASK \
+            --query taskDefinition \
+            > frontend-task.json
 
-          jq --arg IMAGE "${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_FRONTEND_REPO }}:$IMAGE_TAG" \
-          '.containerDefinitions[0].image=$IMAGE
-          | del(.taskDefinitionArn,.revision,.status,.requiresAttributes,.compatibilities,.registeredAt,.registeredBy)' \
-          task-def.json > new-task-def.json
+      - name: Render new frontend task definition
+        id: render-frontend
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: frontend-task.json
+          container-name: resumexpert-frontend
+          image: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_FRONTEND_REPO }}:${{ github.sha }}
 
-          aws ecs register-task-definition --cli-input-json file://new-task-def.json
-
-          aws ecs update-service \
-            --cluster resumexpert-cluster \
-            --service resumexpert-frontend-service \
-            --force-new-deployment
+      - name: Deploy frontend
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+        with:
+          task-definition: ${{ steps.render-frontend.outputs.task-definition }}
+          service: $FRONTEND_SERVICE
+          cluster: $CLUSTER_NAME
+          wait-for-service-stability: true
