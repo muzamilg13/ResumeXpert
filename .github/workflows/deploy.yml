@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Configure AWS credentials
@@ -26,37 +26,51 @@ jobs:
           docker login --username AWS --password-stdin \
           ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
 
-      # -----------------------
-      # BACKEND BUILD & PUSH
-      # -----------------------
-      - name: Build, tag, and push backend image
-        run: |
-          IMAGE_TAG=${{ github.sha }}
-          ECR_URI=${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_BACKEND_REPO }}
+      - name: Set image tag
+        run: echo "IMAGE_TAG=${GITHUB_SHA}" >> $GITHUB_ENV
 
+      # ---------------- BACKEND ----------------
+      - name: Build and push backend
+        run: |
+          ECR_URI=${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_BACKEND_REPO }}
           docker build -t $ECR_URI:$IMAGE_TAG ./backend
           docker push $ECR_URI:$IMAGE_TAG
 
-      # -----------------------
-      # FRONTEND BUILD & PUSH
-      # -----------------------
-      - name: Build, tag, and push frontend image
+      - name: Update backend task definition
         run: |
-          IMAGE_TAG=${{ github.sha }}
-          ECR_URI=${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_FRONTEND_REPO }}
+          TASK_DEF=$(aws ecs describe-task-definition --task-definition resumexpert-backend-task --query taskDefinition)
+          echo $TASK_DEF > task-def.json
 
-          docker build -t $ECR_URI:$IMAGE_TAG ./frontend
-          docker push $ECR_URI:$IMAGE_TAG
+          jq --arg IMAGE "${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_BACKEND_REPO }}:$IMAGE_TAG" \
+          '.containerDefinitions[0].image=$IMAGE
+          | del(.taskDefinitionArn,.revision,.status,.requiresAttributes,.compatibilities,.registeredAt,.registeredBy)' \
+          task-def.json > new-task-def.json
 
-      # -----------------------
-      # FORCE ECS REDEPLOY
-      # -----------------------
-      - name: Force ECS deployment
-        run: |
+          aws ecs register-task-definition --cli-input-json file://new-task-def.json
+
           aws ecs update-service \
             --cluster resumexpert-cluster \
             --service resumexpert-backend-service \
             --force-new-deployment
+
+      # ---------------- FRONTEND ----------------
+      - name: Build and push frontend
+        run: |
+          ECR_URI=${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_FRONTEND_REPO }}
+          docker build -t $ECR_URI:$IMAGE_TAG ./frontend
+          docker push $ECR_URI:$IMAGE_TAG
+
+      - name: Update frontend task definition
+        run: |
+          TASK_DEF=$(aws ecs describe-task-definition --task-definition resumexpert-frontend-task --query taskDefinition)
+          echo $TASK_DEF > task-def.json
+
+          jq --arg IMAGE "${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_FRONTEND_REPO }}:$IMAGE_TAG" \
+          '.containerDefinitions[0].image=$IMAGE
+          | del(.taskDefinitionArn,.revision,.status,.requiresAttributes,.compatibilities,.registeredAt,.registeredBy)' \
+          task-def.json > new-task-def.json
+
+          aws ecs register-task-definition --cli-input-json file://new-task-def.json
 
           aws ecs update-service \
             --cluster resumexpert-cluster \
