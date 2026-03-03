@@ -38,7 +38,7 @@ const LandingPage = () => {
               <LayoutTemplate className={landingPageStyles.logoIconInner} />
             </div>
             <span className={landingPageStyles.logoText}>
-              ResumeXpert
+              SNOW XPERT
             </span>
           </div>
 
