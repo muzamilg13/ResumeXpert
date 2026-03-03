@@ -53,12 +53,23 @@ jobs:
             --query taskDefinition \
             > backend-task.json
 
+          jq 'del(
+            .taskDefinitionArn,
+            .revision,
+            .status,
+            .requiresAttributes,
+            .compatibilities,
+            .registeredAt,
+            .registeredBy,
+            .enableFaultInjection
+          )' backend-task.json > backend-task-clean.json
+
       - name: Render new backend task definition
         id: render-backend
         uses: aws-actions/amazon-ecs-render-task-definition@v1
         with:
-          task-definition: backend-task.json
-          container-name: backend   # ⚠️ Change if your backend container name is different
+          task-definition: backend-task-clean.json
+          container-name: backend
           image: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_BACKEND_REPO }}:${{ github.sha }}
 
       - name: Deploy backend
@@ -84,11 +95,22 @@ jobs:
             --query taskDefinition \
             > frontend-task.json
 
+          jq 'del(
+            .taskDefinitionArn,
+            .revision,
+            .status,
+            .requiresAttributes,
+            .compatibilities,
+            .registeredAt,
+            .registeredBy,
+            .enableFaultInjection
+          )' frontend-task.json > frontend-task-clean.json
+
       - name: Render new frontend task definition
         id: render-frontend
         uses: aws-actions/amazon-ecs-render-task-definition@v1
         with:
-          task-definition: frontend-task.json
+          task-definition: frontend-task-clean.json
           container-name: frontend
           image: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_FRONTEND_REPO }}:${{ github.sha }}
 
