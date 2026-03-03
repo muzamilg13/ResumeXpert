@@ -22,7 +22,7 @@ jobs:
       IMAGE_TAG: ${{ github.sha }}
 
     steps:
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Configure AWS credentials
@@ -64,7 +64,7 @@ jobs:
             .enableFaultInjection
           )' backend-task.json > backend-task-clean.json
 
-      - name: Render new backend task definition
+      - name: Render backend task definition
         id: render-backend
         uses: aws-actions/amazon-ecs-render-task-definition@v1
         with:
@@ -72,12 +72,12 @@ jobs:
           container-name: backend
           image: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_BACKEND_REPO }}:${{ github.sha }}
 
-      - name: Deploy backend
+      - name: Deploy backend to ECS
         uses: aws-actions/amazon-ecs-deploy-task-definition@v1
         with:
           task-definition: ${{ steps.render-backend.outputs.task-definition }}
-          service: $BACKEND_SERVICE
-          cluster: $CLUSTER_NAME
+          service: ${{ env.BACKEND_SERVICE }}
+          cluster: ${{ env.CLUSTER_NAME }}
           wait-for-service-stability: true
 
       # ================= FRONTEND =================
@@ -106,7 +106,7 @@ jobs:
             .enableFaultInjection
           )' frontend-task.json > frontend-task-clean.json
 
-      - name: Render new frontend task definition
+      - name: Render frontend task definition
         id: render-frontend
         uses: aws-actions/amazon-ecs-render-task-definition@v1
         with:
@@ -114,10 +114,10 @@ jobs:
           container-name: frontend
           image: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_FRONTEND_REPO }}:${{ github.sha }}
 
-      - name: Deploy frontend
+      - name: Deploy frontend to ECS
         uses: aws-actions/amazon-ecs-deploy-task-definition@v1
         with:
           task-definition: ${{ steps.render-frontend.outputs.task-definition }}
-          service: $FRONTEND_SERVICE
-          cluster: $CLUSTER_NAME
+          service: ${{ env.FRONTEND_SERVICE }}
+          cluster: ${{ env.CLUSTER_NAME }}
           wait-for-service-stability: true
