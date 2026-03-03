@@ -57,7 +57,7 @@ jobs:
       - name: Build and push frontend
         run: |
           ECR_URI=${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_FRONTEND_REPO }}
-          docker build -t $ECR_URI:$IMAGE_TAG ./frontend
+          docker build --no-cache -t $ECR_FRONTEND:$IMAGE_TAG ./frontend
           docker push $ECR_URI:$IMAGE_TAG
 
       - name: Update frontend task definition
