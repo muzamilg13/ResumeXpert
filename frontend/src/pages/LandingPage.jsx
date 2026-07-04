@@ -63,7 +63,7 @@ const LandingPage = () => {
                 onClick={() => setOpenAuthModal(true)}
               >
                 <div className={landingPageStyles.desktopAuthButtonOverlay}></div>
-                <span className={landingPageStyles.desktopAuthButtonText}>Get Started</span>
+                <span className={landingPageStyles.desktopAuthButtonText}>Get Started with us</span>
               </button>
             )}
           </div>
