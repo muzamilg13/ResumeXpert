@@ -196,7 +196,7 @@ const Dashboard = () => {
             </div>
             <h3 className={styles.emptyTitle}>No Resumes Yet</h3>
             <p className={styles.emptyText}>
-              You haven't created any resumes yet. Start building your professional resume to land your dream job.
+              You haven't created any resumes yet. Start building your professional resume to land your dream job with us.
             </p>
             <button
               className={styles.createButton}
